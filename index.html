@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Code Studio — Interactive Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch {
+      border: none;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 antialiased selection:bg-[#4a0e1c] selection:text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const THEMES = [
+      { name: 'Dark Wine', fg: '#4a0e1c', bg: '#fdf8f9', accent: '#7a1c31' },
+      { name: 'Classic B&W', fg: '#111827', bg: '#ffffff', accent: '#374151' },
+      { name: 'Midnight Slate', fg: '#0f172a', bg: '#f1f5f9', accent: '#334155' },
+      { name: 'Emerald Studio', fg: '#064e3b', bg: '#ecfdf5', accent: '#047857' },
+      { name: 'Obsidian & Gold', fg: '#d97706', bg: '#18181b', accent: '#f59e0b' },
+    ];
+
+    function QRCodeStudio() {
+      const [text, setText] = useState('https://shahzadpanhwar.dev');
+      const [fgColor, setFgColor] = useState('#4a0e1c');
+      const [bgColor, setBgColor] = useState('#fdf8f9');
+      const [size, setSize] = useState(260);
+      const [margin, setMargin] = useState(2);
+      const [ecLevel, setEcLevel] = useState('M');
+      const [showLabel, setShowLabel] = useState(true);
+      const [labelText, setLabelText] = useState('SCAN PORTFOLIO');
+      const [darkStage, setDarkStage] = useState(false);
+      const [copied, setCopied] = useState(false);
+
+      const canvasRef = useRef(null);
+
+      useEffect(() => {
+        if (!canvasRef.current || !window.QRCode) return;
+        const targetText = text.trim() || 'https://shahzadpanhwar.dev';
+        window.QRCode.toCanvas(
+          canvasRef.current,
+          targetText,
+          {
+            width: size,
+            margin: margin,
+            errorCorrectionLevel: ecLevel,
+            color: {
+              dark: fgColor,
+              light: bgColor,
+            },
+          },
+          (err) => {
+            if (err) console.error(err);
+          }
+        );
+      }, [text, fgColor, bgColor, size, margin, ecLevel]);
+
+      const applyTheme = (theme) => {
+        setFgColor(theme.fg);
+        setBgColor(theme.bg);
+      };
+
+      const buildHighResCanvas = () => {
+        return new Promise((resolve, reject) => {
+          const scale = 4;
+          const qrSize = size * scale;
+          const labelHeight = showLabel && labelText.trim() ? 48 * scale : 0;
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = qrSize;
+          outCanvas.height = qrSize + labelHeight;
+          const ctx = outCanvas.getContext('2d');
+
+          ctx.fillStyle = bgColor;
+          ctx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+
+          const tempCanvas = document.createElement('canvas');
+          window.QRCode.toCanvas(
+            tempCanvas,
+            text.trim() || 'https://shahzadpanhwar.dev',
+            {
+              width: qrSize,
+              margin: margin,
+              errorCorrectionLevel: ecLevel,
+              color: { dark: fgColor, light: bgColor },
+            },
+            (err) => {
+              if (err) return reject(err);
+              ctx.drawImage(tempCanvas, 0, 0);
+              if (labelHeight > 0) {
+                ctx.fillStyle = fgColor;
+                ctx.font = `700 ${15 * scale}px Inter, system-ui, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(
+                  labelText.trim().toUpperCase(),
+                  qrSize / 2,
+                  qrSize + labelHeight / 2 - 6 * scale
+                );
+              }
+              resolve(outCanvas);
+            }
+          );
+        });
+      };
+
+      const downloadPNG = async () => {
+        const outCanvas = await buildHighResCanvas();
+        const link = document.createElement('a');
+        link.download = 'qr-code-studio.png';
+        link.href = outCanvas.toDataURL('image/png');
+        link.click();
+      };
+
+      const downloadSVG = async () => {
+        const targetText = text.trim() || 'https://shahzadpanhwar.dev';
+        const svgStr = await window.QRCode.toString(targetText, {
+          type: 'svg',
+          width: size,
+          margin: margin,
+          errorCorrectionLevel: ecLevel,
+          color: { dark: fgColor, light: bgColor },
+        });
+
+        let finalSvg = svgStr;
+        if (showLabel && labelText.trim()) {
+          const extraH = 38;
+          const totalH = size + extraH;
+          const escapedLabel = labelText
+            .trim()
+            .toUpperCase()
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          finalSvg = svgStr
+            .replace(/viewBox="0 0 (\d+) (\d+)"/, `viewBox="0 0 $1 ${Number(size) + extraH}"`)
+            .replace(/height="(\d+)"/, `height="${totalH}"`)
+            .replace(
+              '</svg>',
+              `<rect x="0" y="${size}" width="${size}" height="${extraH}" fill="${bgColor}"/><text x="${
+                size / 2
+              }" y="${
+                size + 22
+              }" fill="${fgColor}" font-family="Inter, system-ui, sans-serif" font-weight="700" font-size="13" letter-spacing="1.5" text-anchor="middle">${escapedLabel}</text></svg>`
+            );
+        }
+
+        const blob = new Blob([finalSvg], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = 'qr-code-studio.svg';
+        link.href = url;
+        link.click();
+        URL.revokeObjectURL(url);
+      };
+
+      const copyImage = async () => {
+        try {
+          const outCanvas = await buildHighResCanvas();
+          outCanvas.toBlob(async (blob) => {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          });
+        } catch (e) {
+          alert('Clipboard copy requires HTTPS or localhost. Use Download PNG instead.');
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          {/* Header */}
+          <header className="bg-[#360914] text-white border-b border-[#5a1425] px-6 py-4 shadow-sm">
+            <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-[#fdf8f9] text-[#4a0e1c] flex items-center justify-center font-bold text-lg shadow">
+                  QR
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold tracking-tight">QR Code Studio</h1>
+                  <p className="text-xs text-rose-200/80">Vector &amp; High-DPI QR Generator</p>
+                </div>
+              </div>
+              <span className="text-xs font-medium px-3 py-1 rounded-full bg-[#4a0e1c] border border-rose-300/20 text-rose-100">
+                Free &amp; Client-Side
+              </span>
+            </div>
+          </header>
+
+          {/* Main Workspace */}
+          <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Left Controls */}
+            <section className="lg:col-span-7 space-y-6 bg-white p-6 rounded-2xl border border-stone-200 shadow-sm">
+              {/* URL / Content */}
+              <div>
+                <label className="block text-sm font-semibold text-stone-800 mb-1.5">
+                  Destination URL or Text
+                </label>
+                <input
+                  type="text"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="https://your-portfolio.com"
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#4a0e1c] focus:border-transparent text-sm"
+                />
+              </div>
+
+              {/* Theme Presets */}
+              <div>
+                <label className="block text-sm font-semibold text-stone-800 mb-2">
+                  Signature Color Themes
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {THEMES.map((theme) => {
+                    const active = fgColor.toLowerCase() === theme.fg && bgColor.toLowerCase() === theme.bg;
+                    return (
+                      <button
+                        key={theme.name}
+                        type="button"
+                        onClick={() => applyTheme(theme)}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left text-xs font-medium transition ${
+                          active
+                            ? 'border-[#4a0e1c] bg-rose-50/70 text-[#4a0e1c] ring-1 ring-[#4a0e1c]'
+                            : 'border-stone-200 hover:border-stone-300 text-stone-700'
+                        }`}
+                      >
+                        <span
+                          className="w-5 h-5 rounded-full border border-stone-300 shrink-0"
+                          style={{ background: `linear-gradient(135deg, ${theme.fg} 50%, ${theme.bg} 50%)` }}
+                        />
+                        <span className="truncate">{theme.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Colors */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 mb-1.5">
+                    Foreground Color
+                  </label>
+                  <div className="flex items-center gap-2.5 border border-stone-300 rounded-xl px-3 py-1.5">
+                    <input
+                      type="color"
+                      value={fgColor}
+                      onChange={(e) => setFgColor(e.target.value)}
+                      className="w-7 h-7 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={fgColor}
+                      onChange={(e) => setFgColor(e.target.value)}
+                      className="w-full text-sm font-mono uppercase focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 mb-1.5">
+                    Background Color
+                  </label>
+                  <div className="flex items-center gap-2.5 border border-stone-300 rounded-xl px-3 py-1.5">
+                    <input
+                      type="color"
+                      value={bgColor}
+                      onChange={(e) => setBgColor(e.target.value)}
+                      className="w-7 h-7 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={bgColor}
+                      onChange={(e) => setBgColor(e.target.value)}
+                      className="w-full text-sm font-mono uppercase focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Frame Label */}
+              <div className="pt-2 border-t border-stone-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-semibold text-stone-800">Bottom Callout Label</label>
+                  <input
+                    type="checkbox"
+                    checked={showLabel}
+                    onChange={(e) => setShowLabel(e.target.checked)}
+                    className="w-4 h-4 accent-[#4a0e1c] cursor-pointer"
+                  />
+                </div>
+                {showLabel && (
+                  <input
+                    type="text"
+                    maxLength={28}
+                    value={labelText}
+                    onChange={(e) => setLabelText(e.target.value)}
+                    placeholder="SCAN PORTFOLIO"
+                    className="w-full px-4 py-2 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#4a0e1c] text-sm"
+                  />
+                )}
+              </div>
+
+              {/* Sliders & Error Correction */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-stone-100">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-1">
+                    Preview Size ({size}px)
+                  </label>
+                  <input
+                    type="range"
+                    min="180"
+                    max="340"
+                    step="10"
+                    value={size}
+                    onChange={(e) => setSize(Number(e.target.value))}
+                    className="w-full accent-[#4a0e1c]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-1">
+                    Quiet Zone ({margin})
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="6"
+                    step="1"
+                    value={margin}
+                    onChange={(e) => setMargin(Number(e.target.value))}
+                    className="w-full accent-[#4a0e1c]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-1">
+                    Error Correction
+                  </label>
+                  <select
+                    value={ecLevel}
+                    onChange={(e) => setEcLevel(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#4a0e1c]"
+                  >
+                    <option value="L">Low (7%)</option>
+                    <option value="M">Medium (15%)</option>
+                    <option value="Q">Quartile (25%)</option>
+                    <option value="H">High (30%)</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            {/* Right Preview & Download */}
+            <section className="lg:col-span-5 flex flex-col justify-between bg-white p-6 rounded-2xl border border-stone-200 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+                  Live Preview
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDarkStage(!darkStage)}
+                  className="text-xs font-medium px-3 py-1 rounded-lg border border-stone-200 hover:bg-stone-100 transition"
+                >
+                  {darkStage ? 'Light Stage' : 'Dark Stage'}
+                </button>
+              </div>
+
+              {/* Preview Stage */}
+              <div
+                className={`flex-1 min-h-[340px] rounded-xl flex items-center justify-center p-6 transition-colors ${
+                  darkStage ? 'bg-stone-900' : 'bg-stone-100/80'
+                }`}
+              >
+                <div
+                  className="rounded-2xl shadow-lg overflow-hidden transition-all"
+                  style={{ backgroundColor: bgColor }}
+                >
+                  <canvas ref={canvasRef} className="block mx-auto" />
+                  {showLabel && labelText.trim() && (
+                    <div
+                      className="pb-3.5 pt-0.5 text-center font-bold text-xs tracking-widest uppercase px-3"
+                      style={{ color: fgColor }}
+                    >
+                      {labelText}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Export Actions */}
+              <div className="mt-6 space-y-2.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={downloadPNG}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#4a0e1c] hover:bg-[#360914] text-white font-semibold text-sm shadow-sm transition cursor-pointer"
+                  >
+                    Download PNG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadSVG}
+                    className="w-full py-2.5 px-4 rounded-xl border border-[#4a0e1c] text-[#4a0e1c] hover:bg-rose-50 font-semibold text-sm transition cursor-pointer"
+                  >
+                    Download SVG
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={copyImage}
+                  className="w-full py-2 px-4 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium text-xs transition cursor-pointer"
+                >
+                  {copied ? 'Copied PNG to Clipboard!' : 'Copy High-Res Image to Clipboard'}
+                </button>
+              </div>
+            </section>
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<QRCodeStudio />);
+  </script>
+</body>
+</html>
